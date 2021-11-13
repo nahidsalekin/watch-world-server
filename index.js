@@ -3,19 +3,9 @@ const { MongoClient } = require('mongodb');
 const ObjectId = require('mongodb').ObjectId;
 const cors = require('cors');
 require('dotenv').config();
-var admin = require("firebase-admin");
 
 const app = express();
-const port = 5000;
-
-//firebase admin
-
-
-// var serviceAccount = require('./traveloop-a3bcb-firebase-adminsdk-dms1a-94d9cedb74.json');
-
-// admin.initializeApp({
-//     credential: admin.credential.cert(serviceAccount)
-// });
+const port = process.env.PORT || 5000;
 
 //middleware
 app.use(cors());
@@ -24,20 +14,6 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.fiuyj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
-async function verifyToken(req, res, next) {
-    console.log(req.headers.authorization)
-    if (req.headers?.authorization?.startsWith('Bearer ')) {
-        const idToken = req.headers.authorization.split(' ')[1];
-        try {
-            const decodedUser = await admin.auth().verifyIdToken(idToken);
-            req.decodedUserEmail = decodedUser.email;
-        }
-        catch {
-
-        }
-    }
-    next();
-}
 async function run() {
     try {
         await client.connect();
@@ -45,8 +21,12 @@ async function run() {
         const watchesCollection = db.collection('watches');
         const usersCollection = db.collection('user');
         const ordersCollection = db.collection('orders');
+        const reviewsCollection = db.collection('reviews');
 
-        //get api
+
+        //-----------------
+        //  Products API
+        //-----------------
         app.get('/watches', async (req, res) => {
             const limit = parseInt(req.query.limit);
             const cursor = watchesCollection.find({}).limit(limit);
@@ -60,20 +40,48 @@ async function run() {
             const watch = await watchesCollection.findOne(query);
             res.send(watch);
         });
-        app.get('/orders', async (req, res) => {
-            const email = req.query.email;
-            const query = email ? { email: email } : {};
-            console.log('sdads', query)
-            const data = await ordersCollection.find(query).toArray();
-            res.send(data);
+
+        app.delete('/watches/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await watchesCollection.deleteOne(query);
+            res.send(result);
         });
 
-        //post api
         app.post('/watches', async (req, res) => {
             const watch = req.body;
             const result = await watchesCollection.insertOne(watch);
             res.json(result)
         });
+
+        //-----------------
+        //  Reviews API
+        //-----------------
+
+        app.get('/reviews', async (req, res) => {
+            const cursor = reviewsCollection.find({});
+            const reviews = await cursor.toArray();
+            res.send(reviews);
+        });
+
+        app.post('/reviews', async (req, res) => {
+            const review = req.body;
+            const result = await reviewsCollection.insertOne(review);
+            res.json(result)
+        });
+
+
+        //-----------------
+        //  Orders API
+        //-----------------
+
+        app.get('/orders', async (req, res) => {
+            const email = req.query.email;
+            const query = email ? { email: email } : {};
+            const data = await ordersCollection.find(query).toArray();
+            res.send(data);
+        });
+
         app.post('/place_order', async (req, res) => {
             const order = req.body;
             console.log(order)
@@ -84,7 +92,6 @@ async function run() {
         //delete api
         app.delete('/orders/:id', async (req, res) => {
             const id = req.params.id;
-            console.log(id)
             const query = { _id: ObjectId(id) };
             const result = await ordersCollection.deleteOne(query);
             res.send(result);
@@ -92,14 +99,15 @@ async function run() {
         //update
         app.put('/orders/:id', async (req, res) => {
             const id = { _id: ObjectId(req.params.id) };
-            console.log(id._id)
             const filter = { _id: id._id };
             const updateDoc = { $set: { status: 'shipped' } };
             const result = await ordersCollection.updateOne(filter, updateDoc);
             res.json(result)
         })
 
-        //users
+        //-----------------
+        //  Users API
+        //-----------------
         app.get('/users/:email', async (req, res) => {
             const email = req.params.email;
             const query = { email: email };
@@ -129,7 +137,6 @@ async function run() {
 
         app.put('/users/admin', async (req, res) => {
             const user = req.body;
-            console.log(user, user.email)
             const filter = { email: user.email };
             const updateDoc = { $set: { role: 'admin' } };
             const result = await usersCollection.updateOne(filter, updateDoc);
